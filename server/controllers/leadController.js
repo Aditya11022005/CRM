@@ -232,34 +232,64 @@ exports.deleteLead = async (req, res, next) => {
  */
 exports.runPlacesSearch = async (req, res, next) => {
   try {
-    const { query, city, location, category, apiKey, simulate } = req.body;
+    const { category, city, area, keyword, apiKey, simulate } = req.body;
 
-    if (!query) {
-      return res.status(400).json({ success: false, error: 'Query is a required parameter' });
+    if (!category || !city) {
+      return res.status(400).json({ success: false, error: 'Category and City are required parameters' });
     }
 
-    const targetCity = city || location || 'Local';
-    const targetCategory = category || query || 'Prospect';
+    // Check if scraper already running for this business
+    const status = getJobStatus(req.business._id);
+    if (status && status.status === 'running') {
+      return res.status(400).json({ success: false, error: 'A scraping job is already running for this business.' });
+    }
+
+    // Clear any previous stop request flag
+    clearStopRequest(req.business._id);
+
+    const targetCategory = category;
+    const targetCity = city;
+    const targetArea = area || '';
+    const targetKeyword = keyword || '';
+
+    // Build the query parameter for googlePlaces
+    const searchString = [targetKeyword, targetCategory].filter(Boolean).join(' ');
+    const searchLocation = [targetArea, targetCity].filter(Boolean).join(', ');
+
+    const io = getIO();
     const forceSimulate = simulate === true;
 
-    const { searchGooglePlaces } = require('../services/googlePlaces');
-    const leads = await searchGooglePlaces(
-      query,
-      targetCity,
-      targetCategory,
-      apiKey,
-      req.business._id,
-      req.user._id,
-      forceSimulate
-    );
+    // Start in background
+    (async () => {
+      try {
+        const { searchGooglePlaces } = require('../services/googlePlaces');
+        await searchGooglePlaces(
+          searchString,
+          searchLocation,
+          targetCategory,
+          apiKey,
+          req.business._id,
+          req.user._id,
+          io,
+          forceSimulate
+        );
+      } catch (err) {
+        console.error('Background Places search failed:', err);
+        if (io) {
+          io.to(req.business._id.toString()).emit('scraping_log', {
+            message: `Places API search encountered an error: ${err.message}`,
+            type: 'danger',
+            progress: 100,
+            timestamp: new Date(),
+          });
+        }
+      }
+    })();
 
     res.status(200).json({
       success: true,
-      message: forceSimulate 
-        ? `Simulation completed. Discovered ${leads.length} simulated leads.`
-        : `Places API execution complete. Saved ${leads.length} new leads.`,
-      count: leads.length,
-      leads,
+      message: 'Google Places search triggered in background.',
+      businessId: req.business._id,
     });
   } catch (err) {
     next(err);
@@ -295,7 +325,7 @@ exports.runMapsScraper = async (req, res, next) => {
 
     // Start in background
     const io = getIO();
-    const scrapeLimitVal = parseInt(limit) || 50;
+    const scrapeLimitVal = parseInt(limit) || 200;
     
     // We run it as an IIFE so we don't block the HTTP response
     (async () => {

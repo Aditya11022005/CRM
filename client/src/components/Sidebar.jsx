@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
@@ -112,7 +112,20 @@ const Sidebar = () => {
   };
 
   return (
-    <div className="w-64 h-screen flex flex-col glass-panel border-r border-slate-800/60 text-slate-300 select-none z-30">
+    <>
+      {/* Backdrop overlay for mobile */}
+      {isOpen && (
+        <div
+          onClick={onClose}
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 md:hidden"
+        />
+      )}
+
+      <div
+        className={`fixed md:static inset-y-0 left-0 w-64 h-screen flex flex-col glass-panel border-r border-slate-800/60 text-slate-300 select-none z-50 transition-transform duration-300 transform md:transform-none ${
+          isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
       
       {/* SaaS Branding */}
       <div className="p-5 flex items-center gap-3 border-b border-slate-800/40">
@@ -192,7 +205,10 @@ const Sidebar = () => {
               Super Admin Area
             </div>
             <div
-              onClick={() => navigate('/admin')}
+              onClick={() => {
+                navigate('/admin');
+                if (onClose) onClose();
+              }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 ${
                 location.pathname === '/admin'
                   ? 'bg-gradient-to-r from-violet-600/30 to-indigo-600/10 text-violet-300 border-l-2 border-violet-500 font-semibold'
@@ -214,7 +230,10 @@ const Sidebar = () => {
               return (
                 <div
                   key={item.name}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => {
+                    navigate(item.path);
+                    if (onClose) onClose();
+                  }}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 ${
                     isActive
                       ? 'bg-indigo-600/10 text-indigo-300 border-l-2 border-indigo-500 font-semibold'
@@ -259,6 +278,7 @@ const Sidebar = () => {
       </div>
 
     </div>
+    </>
   );
 };
 

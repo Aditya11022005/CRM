@@ -9,6 +9,7 @@ const DashboardLayout = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useSelector((state) => state.auth);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -43,16 +44,16 @@ const DashboardLayout = () => {
       )}
 
       {/* Sidebar Navigation */}
-      <Sidebar />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Screen Frame */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Header Navbar */}
-        <Navbar />
+        <Navbar onMenuClick={() => setSidebarOpen(true)} />
 
         {/* Dynamic Nested Screen Content */}
-        <main className="flex-1 overflow-y-auto bg-glow p-6">
+        <main className="flex-1 overflow-y-auto bg-glow p-4 md:p-6">
           <Outlet />
         </main>
 

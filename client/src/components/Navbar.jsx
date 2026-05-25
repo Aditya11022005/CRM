@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Bell, Search, User, CheckCircle, Award, Volume2, Trash2 } from 'lucide-react';
+import { Bell, Search, User, CheckCircle, Award, Volume2, Trash2, Menu } from 'lucide-react';
 import api from '../services/api';
 import socketIOClient from 'socket.io-client';
 import toast from 'react-hot-toast';
 
-const Navbar = () => {
+const Navbar = ({ onMenuClick }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, activeBusinessId } = useSelector((state) => state.auth);
@@ -136,11 +136,17 @@ const Navbar = () => {
   };
 
   return (
-    <div className="h-16 border-b border-slate-800/40 px-6 flex items-center justify-between sticky top-0 bg-slate-950/80 backdrop-blur-md z-20">
+    <div className="h-16 border-b border-slate-800/40 px-4 md:px-6 flex items-center justify-between sticky top-0 bg-slate-950/80 backdrop-blur-md z-20">
       
-      {/* Dynamic Title */}
-      <div>
-        <h2 className="text-lg font-outfit font-bold text-white tracking-wide">{getPageTitle()}</h2>
+      {/* Left side: Hamburger + Dynamic Title */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onMenuClick}
+          className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors border border-slate-800/60 md:hidden"
+        >
+          <Menu className="w-4 h-4" />
+        </button>
+        <h2 className="text-sm md:text-lg font-outfit font-bold text-white tracking-wide">{getPageTitle()}</h2>
       </div>
 
       {/* Right controls: Search, Notification Bell, Profile */}

@@ -11,15 +11,17 @@ const Leads = () => {
   const { activeBusinessId } = useSelector((state) => state.auth);
 
   // Method 1 States
-  const [placesQuery, setPlacesQuery] = useState('');
-  const [placesLocation, setPlacesLocation] = useState('');
-  const [simulatePlaces, setSimulatePlaces] = useState(true);
+  const [placesCategory, setPlacesCategory] = useState('');
+  const [placesCity, setPlacesCity] = useState('');
+  const [placesArea, setPlacesArea] = useState('');
+  const [placesKeyword, setPlacesKeyword] = useState('');
+  const [simulatePlaces, setSimulatePlaces] = useState(false);
 
   // Method 2 States
   const [scrapeQuery, setScrapeQuery] = useState('');
   const [scrapeCity, setScrapeCity] = useState('');
   const [scrapeSource, setScrapeSource] = useState('Google Maps');
-  const [scrapeLimit, setScrapeLimit] = useState(50);
+  const [scrapeLimit, setScrapeLimit] = useState(200);
   const [scrapeProgress, setScrapeProgress] = useState(0);
   const [activeScrapeJob, setActiveScrapeJob] = useState(null);
   const [scrapeLogs, setScrapeLogs] = useState([]);
@@ -198,24 +200,25 @@ const Leads = () => {
   // Run Official Places API Search
   const handlePlacesSearch = async (e) => {
     e.preventDefault();
-    if (!placesQuery) return toast.error('Specify a search query (e.g. Pizza, Solar)');
+    if (!placesCategory || !placesCity) return toast.error('Category and City are required');
 
-    const loadingToast = toast.loading('Querying Google Places...');
+    setScrapeProgress(0);
+    setScrapeLogs([`[0%] Initializing Google Places API search for category: ${placesCategory} in ${placesArea || ''} ${placesCity}...`]);
     try {
       const res = await api.post('/leads/search-places', {
-        query: placesQuery,
-        location: placesLocation,
+        category: placesCategory,
+        city: placesCity,
+        area: placesArea,
+        keyword: placesKeyword,
         simulate: simulatePlaces,
       });
 
       if (res.data.success) {
-        toast.dismiss(loadingToast);
-        toast.success(`Discovered ${res.data.count} leads successfully!`);
-        fetchLeads(1);
+        setActiveScrapeJob(res.data.businessId);
+        toast.success(`Google Places search triggered in background!`);
       }
     } catch (err) {
-      toast.dismiss(loadingToast);
-      toast.error(err.response?.data?.error || 'Places search failed');
+      toast.error(err.response?.data?.error || 'Places search failed to initiate');
     }
   };
 
@@ -631,22 +634,42 @@ const Leads = () => {
           <form onSubmit={handlePlacesSearch} className="space-y-3.5 flex-1 flex flex-col">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-wide">Category Keyword</label>
+                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-wide">Category</label>
                 <input
                   type="text"
-                  placeholder="e.g. Solar Contractors"
-                  value={placesQuery}
-                  onChange={(e) => setPlacesQuery(e.target.value)}
+                  placeholder="e.g. Salon, Solar"
+                  value={placesCategory}
+                  onChange={(e) => setPlacesCategory(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-wide">Location City</label>
+                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-wide">City</label>
                 <input
                   type="text"
-                  placeholder="e.g. Pune, India"
-                  value={placesLocation}
-                  onChange={(e) => setPlacesLocation(e.target.value)}
+                  placeholder="e.g. Pune, Mumbai"
+                  value={placesCity}
+                  onChange={(e) => setPlacesCity(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-wide">Area</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Kothrud, Bandra"
+                  value={placesArea}
+                  onChange={(e) => setPlacesArea(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase tracking-wide">Keyword (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Best, Top"
+                  value={placesKeyword}
+                  onChange={(e) => setPlacesKeyword(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
@@ -810,7 +833,7 @@ const Leads = () => {
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={handleBulkAIEnrich}
               disabled={bulkEnriching || leads.filter((l) => !l.aiEnriched).length === 0}

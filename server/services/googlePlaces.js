@@ -1,33 +1,90 @@
 const axios = require('axios');
 const Lead = require('../models/Lead');
+const { extractEmailFromWebsite, activeJobs, stopRequestsSet } = require('./scraper');
+
+// Helper to send live logs via Socket.io
+const logToSocket = (io, businessId, message, type = 'info', progress = 0) => {
+  if (io) {
+    io.to(businessId.toString()).emit('scraping_log', {
+      message,
+      type,
+      progress,
+      timestamp: new Date(),
+    });
+  }
+  console.log(`[Places API - Business ${businessId}]: ${message}`);
+};
 
 /**
  * Searches Google Places via official API. If no API key is set, returns simulated data to demonstrate UI capabilities.
  */
-const searchGooglePlaces = async (query, city, category, apiKey, businessId, userId, forceSimulate = false) => {
-  const finalQuery = `${query} in ${city}`;
+const searchGooglePlaces = async (query, city, category, apiKey, businessId, userId, io, forceSimulate = false) => {
+  const jobId = `${businessId}`;
+  
+  if (stopRequestsSet.has(jobId)) {
+    throw new Error('Places search stopped by user');
+  }
+  activeJobs.set(jobId, { status: 'running', stopRequested: false });
 
+  logToSocket(io, businessId, `Starting Google Places API campaign for: "${query}" in "${city}"...`, 'info', 5);
+
+  const finalQuery = `${query} in ${city}`;
   const key = apiKey || process.env.GOOGLE_PLACES_API_KEY;
 
   if (forceSimulate || !key) {
-    console.log('[Places API]: Simulating API search.');
-    return await simulatePlacesSearch(query, city, category, businessId, userId);
+    logToSocket(io, businessId, 'No API key provided or simulation selected. Starting simulator...', 'warning', 10);
+    const leads = await simulatePlacesSearch(query, city, category, businessId, userId, io);
+    activeJobs.delete(jobId);
+    return leads;
   }
 
-  const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(finalQuery)}&key=${key}`;
+  let results = [];
+  let nextPageToken = '';
+  let pagesFetched = 0;
+  const maxPages = 10;
 
   try {
-    const searchResponse = await axios.get(searchUrl);
-    
-    if (searchResponse.data.status !== 'OK' && searchResponse.data.status !== 'ZERO_RESULTS') {
-      throw new Error(`Google Places API Error: ${searchResponse.data.status} - ${searchResponse.data.error_message || ''}`);
-    }
+    do {
+      if (activeJobs.get(jobId)?.stopRequested) {
+        throw new Error('Places search stopped by user');
+      }
 
-    const results = searchResponse.data.results || [];
+      let searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?key=${key}`;
+      if (nextPageToken) {
+        logToSocket(io, businessId, `Waiting for next page token to activate...`, 'info', 10 + pagesFetched * 5);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        searchUrl += `&pagetoken=${nextPageToken}`;
+      } else {
+        searchUrl += `&query=${encodeURIComponent(finalQuery)}`;
+      }
+
+      logToSocket(io, businessId, `Requesting Places API search page ${pagesFetched + 1}...`, 'info', 15 + pagesFetched * 5);
+      const searchResponse = await axios.get(searchUrl);
+      
+      if (searchResponse.data.status !== 'OK' && searchResponse.data.status !== 'ZERO_RESULTS') {
+        throw new Error(`Google Places API Error: ${searchResponse.data.status} - ${searchResponse.data.error_message || ''}`);
+      }
+
+      const pageResults = searchResponse.data.results || [];
+      results = results.concat(pageResults);
+      logToSocket(io, businessId, `Fetched ${results.length} total raw place records.`, 'info', 20 + pagesFetched * 5);
+      
+      nextPageToken = searchResponse.data.next_page_token || '';
+      pagesFetched++;
+    } while (nextPageToken && results.length < 200 && pagesFetched < maxPages);
+
+    logToSocket(io, businessId, `Places API search complete. Found ${results.length} candidates. Processing details & emails...`, 'info', 40);
+
     const savedLeads = [];
+    const limitListings = results.slice(0, 200);
+    const total = limitListings.length;
+    let processed = 0;
 
-    // Process up to 10 results to avoid rate limit/performance hits on single search
-    for (const place of results.slice(0, 10)) {
+    for (const place of limitListings) {
+      if (activeJobs.get(jobId)?.stopRequested) {
+        throw new Error('Places search stopped by user');
+      }
+
       // Check duplicate
       const exists = await Lead.findOne({
         business: businessId,
@@ -37,11 +94,17 @@ const searchGooglePlaces = async (query, city, category, apiKey, businessId, use
         ],
       });
 
-      if (exists) continue;
+      if (exists) {
+        processed++;
+        const pct = Math.round(40 + (processed / total) * 60);
+        logToSocket(io, businessId, `Skipped duplicate: "${place.name}" (${processed}/${total})`, 'info', pct);
+        continue;
+      }
 
       // Fetch place details for website and phone
       let phone = '';
       let website = '';
+      let email = '';
       let openingHours = '';
       let mapsUrl = `https://www.google.com/maps/place/?q=place_id:${place.place_id}`;
 
@@ -62,11 +125,20 @@ const searchGooglePlaces = async (query, city, category, apiKey, businessId, use
         console.error(`Error fetching details for place ${place.place_id}:`, err.message);
       }
 
+      // Try to extract email from the website if it exists
+      if (website) {
+        try {
+          email = await extractEmailFromWebsite(website);
+        } catch (err) {
+          console.error(`Error extracting email for place ${place.name} from ${website}:`, err.message);
+        }
+      }
+
       const lead = new Lead({
         business: businessId,
         name: place.name,
         phone: phone || '',
-        email: '', // Places API does not provide emails directly
+        email: email || '',
         website: website || '',
         address: place.formatted_address || '',
         rating: place.rating || 0,
@@ -83,94 +155,93 @@ const searchGooglePlaces = async (query, city, category, apiKey, businessId, use
 
       await lead.save();
       savedLeads.push(lead);
+      processed++;
+      
+      const pct = Math.round(40 + (processed / total) * 60);
+      logToSocket(io, businessId, `Processed ${processed}/${total}: "${place.name}"`, 'success', pct);
     }
 
+    logToSocket(io, businessId, `Google Places search complete! Saved ${savedLeads.length} new leads.`, 'success', 100);
+    activeJobs.delete(jobId);
     return savedLeads;
   } catch (err) {
-    console.error('Google Places API search failed:', err.message);
+    logToSocket(io, businessId, `Places API search error: ${err.message}`, 'error', 100);
+    activeJobs.delete(jobId);
     throw err;
   }
 };
 
 /**
  * High-fidelity Place Search simulation if no Google key is available.
+ * Generates 200 detailed leads for realistic testing.
  */
-const simulatePlacesSearch = async (query, city, category, businessId, userId) => {
-  // Simulate delay
+const simulatePlacesSearch = async (query, city, category, businessId, userId, io) => {
+  logToSocket(io, businessId, `Simulator: preparing simulated places search for "${query}" in "${city}"...`, 'info', 15);
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
-  const simulationData = [
-    {
-      name: `Prime ${category.toUpperCase()} Solutions`,
-      phone: '+91 94444 88888',
-      website: `https://www.prime${category.toLowerCase()}.com`,
-      address: `12, MG Road, ${city}, India`,
-      rating: 4.8,
-      reviewsCount: 310,
-      lat: 12.971598,
-      lng: 77.594562,
-      hours: 'Mon-Sat: 9:00 AM - 6:00 PM',
-    },
-    {
-      name: `${city} ${category.charAt(0).toUpperCase() + category.slice(1)} Hub`,
-      phone: '+91 93333 77777',
-      website: '',
-      address: `45, Residency Road, ${city}, India`,
-      rating: 4.2,
-      reviewsCount: 92,
-      lat: 12.968598,
-      lng: 77.596562,
-      hours: 'Mon-Fri: 10:00 AM - 7:00 PM',
-    },
-    {
-      name: `Elite ${category.charAt(0).toUpperCase() + category.slice(1)} Services`,
-      phone: '+91 92222 66666',
-      website: `https://www.elite${category.toLowerCase()}services.in`,
-      address: `88, Outer Ring Road, ${city}, India`,
-      rating: 4.5,
-      reviewsCount: 145,
-      lat: 12.972598,
-      lng: 77.592562,
-      hours: 'Open 24 hours',
-    },
-  ];
-
   const savedLeads = [];
-  let idx = 0;
+  const targetCount = 200;
+  
+  const companyPrefixes = ['Prime', 'Elite', 'Apex', 'Global', 'National', 'Metro', 'Summit', 'Direct', 'Vanguard', 'Alpha', 'Pro', 'Infinity', 'Omni', 'Dynamic', 'Nova'];
+  const companySuffixes = ['Solutions', 'Services', 'Hub', 'Group', 'Partners', 'Systems', 'Ventures', 'Associates', 'Co', 'Industries'];
 
-  for (const item of simulationData) {
+  for (let i = 1; i <= targetCount; i++) {
+    if (activeJobs.get(`${businessId}`)?.stopRequested) {
+      throw new Error('Places search stopped by user');
+    }
+
+    const pfx = companyPrefixes[i % companyPrefixes.length];
+    const sfx = companySuffixes[(i + 3) % companySuffixes.length];
+    const catName = category.charAt(0).toUpperCase() + category.slice(1);
+    const companyName = `${pfx} ${catName} ${sfx} ${i}`;
+
     const exists = await Lead.findOne({
       business: businessId,
-      name: item.name,
+      name: companyName,
       city,
     });
 
-    if (exists) continue;
+    if (exists) {
+      const pct = Math.round(15 + (i / targetCount) * 85);
+      logToSocket(io, businessId, `Skipped duplicate: "${companyName}" (${i}/${targetCount})`, 'info', pct);
+      continue;
+    }
+
+    const domain = `${pfx.toLowerCase()}-${catName.toLowerCase()}-${i}.in`;
+    const rating = parseFloat((4.0 + Math.random() * 0.9).toFixed(1));
+    const reviewsCount = Math.floor(15 + Math.random() * 450);
+    const phone = `+91 ${90000 + (i % 10000)} ${10000 + (i % 90000)}`;
 
     const lead = new Lead({
       business: businessId,
-      name: item.name,
-      phone: item.phone,
-      email: `info@${item.name.toLowerCase().replace(/\s+/g, '')}.com`,
-      website: item.website,
-      address: item.address,
-      rating: item.rating,
-      reviewsCount: item.reviewsCount,
+      name: companyName,
+      phone: phone,
+      email: `contact@${domain}`,
+      website: `https://www.${domain}`,
+      address: `${100 + i}, Commercial Complex, Phase ${i % 5 + 1}, ${city}, India`,
+      rating: rating,
+      reviewsCount: reviewsCount,
       category: category,
       city: city,
-      latitude: item.lat,
-      longitude: item.lng,
-      openingHours: item.hours,
-      mapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name + ' ' + city)}`,
+      latitude: 12.971598 + (i * 0.0005),
+      longitude: 77.594562 - (i * 0.0005),
+      openingHours: 'Mon-Sat: 9:00 AM - 6:00 PM',
+      mapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(companyName + ' ' + city)}`,
       source: 'Google Maps (API)',
       createdBy: userId,
     });
 
     await lead.save();
     savedLeads.push(lead);
-    idx++;
+    
+    // Slight delay to simulate progress logs filling up nicely
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    
+    const pct = Math.round(15 + (i / targetCount) * 85);
+    logToSocket(io, businessId, `Saved simulated lead: "${companyName}" (${i}/${targetCount})`, 'success', pct);
   }
 
+  logToSocket(io, businessId, `Places API simulation complete! Saved ${savedLeads.length} leads.`, 'success', 100);
   return savedLeads;
 };
 

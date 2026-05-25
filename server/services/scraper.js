@@ -12,9 +12,9 @@ const extractEmailFromWebsite = async (url) => {
   }
 
   try {
-    const response = await axios.get(formattedUrl, { 
-      timeout: 8000, 
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } 
+    const response = await axios.get(formattedUrl, {
+      timeout: 8000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
     });
     const html = response.data;
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -27,9 +27,9 @@ const extractEmailFromWebsite = async (url) => {
     if (formattedUrl.startsWith('https://')) {
       try {
         const httpUrl = formattedUrl.replace('https://', 'http://');
-        const response = await axios.get(httpUrl, { 
-          timeout: 5000, 
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } 
+        const response = await axios.get(httpUrl, {
+          timeout: 5000,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
         });
         const html = response.data;
         const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -68,7 +68,7 @@ const logToSocket = (io, businessId, message, type = 'info', progress = 0) => {
  */
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const saveLeadsInBatches = async (listings, businessId, userId, sourceName, city, category, io, jobId, limit = 50) => {
+const saveLeadsInBatches = async (listings, businessId, userId, sourceName, city, category, io, jobId, limit = 200) => {
   const savedLeads = [];
   const limitListings = listings.slice(0, limit);
   const total = limitListings.length;
@@ -81,7 +81,7 @@ const saveLeadsInBatches = async (listings, businessId, userId, sourceName, city
       break;
     }
     const batch = limitListings.slice(i, i + batchSize);
-    
+
     await Promise.all(batch.map(async (item) => {
       try {
         // Duplicate check
@@ -136,7 +136,7 @@ const saveLeadsInBatches = async (listings, businessId, userId, sourceName, city
 /**
  * Scrape Google Maps using Puppeteer
  */
-const scrapeGoogleMaps = async (query, city, category, businessId, userId, io, limit = 50) => {
+const scrapeGoogleMaps = async (query, city, category, businessId, userId, io, limit = 200) => {
   const jobId = `${businessId}`;
   if (stopRequestsSet.has(jobId)) {
     throw new Error('Scraping stopped by user');
@@ -181,7 +181,7 @@ const scrapeGoogleMaps = async (query, city, category, businessId, userId, io, l
     let currentHeight = 0;
     let itemsFoundCount = 0;
     let scrollAttempts = 0;
-    const maxScrollAttempts = 45;
+    const maxScrollAttempts = Math.max(45, Math.ceil(limit * 0.6));
 
     // Check if Stop was clicked
     if (activeJobs.get(jobId)?.stopRequested) {
@@ -207,13 +207,13 @@ const scrapeGoogleMaps = async (query, city, category, businessId, userId, io, l
       }
 
       await delay(1200 + Math.random() * 800);
-      
+
       // Get count of item links to trace progress
       const currentLinks = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('a[href*="/maps/place/"]')).length;
       });
 
-      if (currentLinks >= 100) {
+      if (currentLinks >= limit) {
         logToSocket(io, businessId, `Discovered ~${currentLinks} listings in feed. Stopping scroll.`, 'info', 50);
         break;
       }
@@ -530,7 +530,7 @@ const runResilientFallbackScraper = async (query, city, category, businessId, us
 
   // Select list based on category matching, or fallback to query-based generation
   const baseList = categoriesList[category.toLowerCase()] || categoriesList['agency'];
-  
+
   const savedLeads = [];
   let processed = 0;
 
@@ -540,7 +540,7 @@ const runResilientFallbackScraper = async (query, city, category, businessId, us
     }
 
     const leadName = `${item.name} ${city}`;
-    
+
     // Check duplicates
     const dupQuery = [];
     if (item.phone && item.phone.trim() !== '') dupQuery.push({ phone: item.phone.trim() });
@@ -613,7 +613,7 @@ const getJobStatus = (businessId) => {
 /**
  * Scrape Justdial using Puppeteer with resilient fallback
  */
-const scrapeJustdial = async (query, city, category, businessId, userId, io, limit = 50) => {
+const scrapeJustdial = async (query, city, category, businessId, userId, io, limit = 200) => {
   const jobId = `${businessId}`;
   if (stopRequestsSet.has(jobId)) {
     throw new Error('Scraping stopped by user');
@@ -660,7 +660,8 @@ const scrapeJustdial = async (query, city, category, businessId, userId, io, lim
 
     // Justdial scroll
     logToSocket(io, businessId, `Scrolling Justdial page to collect items...`, 'info', 30);
-    for (let i = 0; i < 25; i++) {
+    const scrollsCountJD = Math.max(25, Math.ceil(limit / 5));
+    for (let i = 0; i < scrollsCountJD; i++) {
       if (activeJobs.get(jobId)?.stopRequested) throw new Error('Scraping stopped by user');
       await page.evaluate(() => window.scrollBy(0, 1000));
       await delay(800);
@@ -787,7 +788,7 @@ const runJustdialFallback = async (query, city, category, businessId, userId, io
 /**
  * Scrape IndiaMart using Puppeteer with resilient fallback
  */
-const scrapeIndiaMart = async (query, city, category, businessId, userId, io, limit = 50) => {
+const scrapeIndiaMart = async (query, city, category, businessId, userId, io, limit = 200) => {
   const jobId = `${businessId}`;
   if (stopRequestsSet.has(jobId)) {
     throw new Error('Scraping stopped by user');
@@ -833,7 +834,8 @@ const scrapeIndiaMart = async (query, city, category, businessId, userId, io, li
     await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     logToSocket(io, businessId, `Scrolling IndiaMart page to collect items...`, 'info', 30);
-    for (let i = 0; i < 25; i++) {
+    const scrollsCountIM = Math.max(25, Math.ceil(limit / 5));
+    for (let i = 0; i < scrollsCountIM; i++) {
       if (activeJobs.get(jobId)?.stopRequested) throw new Error('Scraping stopped by user');
       await page.evaluate(() => window.scrollBy(0, 1000));
       await delay(800);
@@ -958,7 +960,7 @@ const runIndiaMartFallback = async (query, city, category, businessId, userId, i
 /**
  * Scrape Yellow Pages using Puppeteer with resilient fallback
  */
-const scrapeYellowPages = async (query, city, category, businessId, userId, io, limit = 50) => {
+const scrapeYellowPages = async (query, city, category, businessId, userId, io, limit = 200) => {
   const jobId = businessId;
   logToSocket(io, businessId, `Starting Yellow Pages scraping engine for: "${query}" in "${city}"`, 'info', 5);
 
@@ -977,41 +979,42 @@ const scrapeYellowPages = async (query, city, category, businessId, userId, io, 
 
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-    
+
     const searchUrl = `https://www.yellowpages.com/search?search_terms=${encodeURIComponent(query)}&geo_location_terms=${encodeURIComponent(city)}`;
     logToSocket(io, businessId, `Navigating to Yellow Pages search page...`, 'info', 15);
-    
+
     await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-    
+
     logToSocket(io, businessId, `Scrolling Yellow Pages to collect listings...`, 'info', 30);
-    await page.evaluate(async () => {
+    await page.evaluate(async (limitVal) => {
       await new Promise((resolve) => {
         let totalHeight = 0;
         const distance = 120;
+        const scrollLimit = Math.max(3000, limitVal * 80);
         const timer = setInterval(() => {
           const scrollHeight = document.body.scrollHeight;
           window.scrollBy(0, distance);
           totalHeight += distance;
-          if (totalHeight >= scrollHeight || totalHeight > 3000) {
+          if (totalHeight >= scrollHeight || totalHeight > scrollLimit) {
             clearInterval(timer);
             resolve();
           }
         }, 100);
       });
-    });
+    }, limit);
 
     logToSocket(io, businessId, `Extracting lead cards...`, 'info', 50);
     const listings = await page.evaluate(() => {
       const results = [];
       const cards = document.querySelectorAll('.search-results .result, .result');
-      
+
       cards.forEach((card) => {
         const nameEl = card.querySelector('a.business-name, h2.n a, .business-name');
         if (!nameEl) return;
-        
+
         const name = nameEl.textContent.trim();
         const mapsUrl = nameEl.href ? (nameEl.href.startsWith('http') ? nameEl.href : window.location.origin + nameEl.href) : '';
-        
+
         const phoneEl = card.querySelector('.phone, .primary, [href^="tel:"]');
         let phone = '';
         if (phoneEl) {
@@ -1086,7 +1089,7 @@ const scrapeYellowPages = async (query, city, category, businessId, userId, io, 
  */
 const runYellowPagesFallback = async (query, city, category, businessId, userId, io) => {
   logToSocket(io, businessId, `Fallback engine: Searching local directory database for "${query}" in "${city}"...`, 'info', 50);
-  
+
   const sampleNames = [
     'National Blue Book Co',
     'Enterprise Directories Ltd',
@@ -1108,7 +1111,7 @@ const runYellowPagesFallback = async (query, city, category, businessId, userId,
     }
 
     const leadName = `${sampleNames[i]} (${query})`;
-    
+
     const exists = await Lead.findOne({
       business: businessId,
       name: leadName,
@@ -1128,7 +1131,7 @@ const runYellowPagesFallback = async (query, city, category, businessId, userId,
       phone,
       email,
       website,
-      address: `Suite ${Math.floor(Math.random()*200)+10}, Commerce Way, ${city}`,
+      address: `Suite ${Math.floor(Math.random() * 200) + 10}, Commerce Way, ${city}`,
       rating: +(4.0 + Math.random() * 0.9).toFixed(1),
       reviewsCount: Math.floor(Math.random() * 45) + 5,
       category,
@@ -1159,4 +1162,7 @@ module.exports = {
   requestStopJob,
   getJobStatus,
   clearStopRequest,
+  extractEmailFromWebsite,
+  activeJobs,
+  stopRequestsSet,
 };

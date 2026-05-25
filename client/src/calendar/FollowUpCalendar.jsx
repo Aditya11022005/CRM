@@ -186,7 +186,7 @@ const FollowUpCalendar = () => {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
           { label: 'Total Reminders', value: totalCount, color: 'text-slate-300', icon: <Bell className="w-5 h-5 text-slate-400" />, bg: 'bg-slate-800/50' },
           { label: 'Overdue', value: overdueCount, color: 'text-rose-400', icon: <AlertCircle className="w-5 h-5 text-rose-400" />, bg: 'bg-rose-500/10 border border-rose-500/20' },
