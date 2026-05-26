@@ -13,8 +13,11 @@ const SubscriptionSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['Free Trial', 'Monthly', '6 Month', 'Yearly'],
     default: 'Free Trial',
+  },
+  package: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Package',
   },
   startDate: {
     type: Date,

@@ -11,6 +11,7 @@ const {
   logout,
   getMe,
   updateProfile,
+  getActiveAnnouncements,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
@@ -22,10 +23,12 @@ router.post('/login', authLimiter, login);
 router.post('/refresh-token', refreshToken);
 router.post('/forgot-password', authLimiter, forgotPassword);
 router.post('/reset-password', authLimiter, resetPassword);
+router.get('/announcements/public', getActiveAnnouncements);
 
 // Protected routes
 router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
+router.get('/announcements', protect, getActiveAnnouncements);
 
 module.exports = router;

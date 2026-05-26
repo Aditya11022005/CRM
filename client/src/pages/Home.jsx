@@ -1,14 +1,42 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Compass, Zap, LineChart, FileSpreadsheet, MessageSquare,
   CalendarDays, ShieldCheck, ArrowRight, CheckCircle2,
   Users, Building, Star, Globe, Phone, Mail, TrendingUp,
-  BarChart3, Clock, Sparkles
+  BarChart3, Clock, Sparkles, Megaphone, X
 } from 'lucide-react';
+import api from '../services/api';
 
 const Home = () => {
   const navigate = useNavigate();
+
+  const [packages, setPackages] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHomeData = async () => {
+      try {
+        const [pkgRes, annRes] = await Promise.all([
+          api.get('/subscriptions/packages'),
+          api.get('/auth/announcements/public')
+        ]);
+        if (pkgRes.data.success) {
+          setPackages(pkgRes.data.packages || []);
+        }
+        if (annRes.data.success) {
+          setAnnouncements(annRes.data.announcements || []);
+        }
+      } catch (err) {
+        console.error('Failed to retrieve active plans or broadcasts:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHomeData();
+  }, []);
 
   const features = [
     { icon: Compass, color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20', title: 'Dual Lead Scraper', desc: 'Google Maps API + Puppeteer browser automation. Extract business name, phone, email, website from any city.' },
@@ -21,11 +49,15 @@ const Home = () => {
     { icon: ShieldCheck, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20', title: 'Secure & Scalable', desc: 'JWT auth, OTP verification, role-based access control, rate limiting, and encrypted data storage.' },
   ];
 
-  const plans = [
-    { name: 'Monthly', price: '299', period: 'month', popular: false, desc: 'For growing freelancers & small teams', features: ['1,000 Leads / month', 'CRM Pipeline', 'WhatsApp Sender', 'Quotes & Invoices', 'Follow-up Calendar'], btn: 'Start Monthly' },
-    { name: '6 Months', price: '3,000', period: '6 months', popular: true, desc: 'Best value for agencies & consultants', features: ['8,000 Leads / 6 months', 'Everything in Monthly', 'Multi-Workspace', 'Custom Brand Colors', 'Priority Scraping'], btn: 'Best Value →' },
-    { name: 'Yearly', price: '5,000', period: 'year', popular: false, desc: 'For scaling companies & sales teams', features: ['Unlimited Leads', 'Everything in 6 Months', 'White-Label Ready', 'Dedicated Support', 'API Access'], btn: 'Get Yearly Deal' },
+  const fallbackPlans = [
+    { name: 'Monthly', price: 299, durationDays: 30, limitLeads: 1000, description: 'For growing freelancers & small teams', features: ['1,000 Leads / month', 'CRM Pipeline', 'WhatsApp Sender', 'Quotes & Invoices', 'Follow-up Calendar'], isPopular: false },
+    { name: '6 Month', price: 3000, durationDays: 180, limitLeads: 8000, description: 'Best value for agencies & consultants', features: ['8,000 Leads / 6 months', 'Everything in Monthly', 'Multi-Workspace', 'Custom Brand Colors', 'Priority Scraping'], isPopular: true },
+    { name: 'Yearly', price: 5000, durationDays: 365, limitLeads: 999999, description: 'For scaling companies & sales teams', features: ['Unlimited Leads', 'Everything in 6 Months', 'White-Label Ready', 'Dedicated Support', 'API Access'], isPopular: false },
   ];
+
+  const displayedPackages = (packages && packages.length > 0)
+    ? packages.filter(p => p.name !== 'Free Trial')
+    : fallbackPlans;
 
   const useCases = [
     { icon: '☀️', title: 'Solar Companies', desc: 'Find residential & commercial solar leads city-wise.' },
@@ -61,6 +93,39 @@ const Home = () => {
           </button>
         </div>
       </header>
+
+      {/* ── Announcements Banner ── */}
+      {announcements.length > 0 && (
+        <div className="bg-slate-950 border-b border-slate-900 py-3 px-6 text-center">
+          <div className="max-w-6xl mx-auto space-y-2">
+            {announcements.map((ann) => {
+              if (dismissedAnnouncements.includes(ann._id)) return null;
+              return (
+                <div
+                  key={ann._id}
+                  className={`p-3 rounded-xl border flex items-center justify-between text-xs font-semibold shadow-sm animate-enter ${
+                    ann.type === 'danger' ? 'bg-rose-500/10 border-rose-500/25 text-rose-350' :
+                    ann.type === 'warning' ? 'bg-amber-500/10 border-amber-500/25 text-amber-350' :
+                    ann.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-350' :
+                    'bg-indigo-500/10 border-indigo-500/25 text-indigo-350'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Megaphone className="w-4 h-4 shrink-0 text-indigo-400 animate-bounce" />
+                    <span>{ann.message}</span>
+                  </div>
+                  <button
+                    onClick={() => setDismissedAnnouncements(prev => [...prev, ann._id])}
+                    className="p-1 hover:bg-slate-900/50 rounded-lg text-slate-400 hover:text-white transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Hero ── */}
       <section className="relative max-w-6xl mx-auto px-6 pt-20 pb-24 text-center">
@@ -203,21 +268,25 @@ const Home = () => {
             <p className="text-slate-400 text-sm">No hidden fees. Start free for 3 days — no card needed.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {plans.map((p) => (
-              <div key={p.name} className={`relative flex flex-col rounded-2xl p-6 border transition-all ${p.popular ? 'bg-gradient-to-b from-indigo-950/60 to-slate-900 border-indigo-500 shadow-2xl shadow-indigo-500/10 scale-[1.02]' : 'bg-slate-900/50 border-slate-800/60'}`}>
-                {p.popular && (
+            {displayedPackages.map((p) => (
+              <div key={p.name} className={`relative flex flex-col rounded-2xl p-6 border transition-all ${p.isPopular ? 'bg-gradient-to-b from-indigo-950/60 to-slate-900 border-indigo-500 shadow-2xl shadow-indigo-500/10 scale-[1.02]' : 'bg-slate-900/50 border-slate-800/60'}`}>
+                {p.isPopular && (
                   <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest bg-indigo-600 text-white shadow-lg">
                     Most Popular
                   </span>
                 )}
-                <h3 className="font-outfit font-bold text-white text-lg mb-1">{p.name}</h3>
-                <p className="text-xs text-slate-500 mb-5">{p.desc}</p>
+                <h3 className="font-outfit font-bold text-white text-lg mb-1 uppercase tracking-wide">{p.name}</h3>
+                <p className="text-xs text-slate-500 mb-5">{p.description || 'Premium SaaS Plan'}</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold font-outfit text-white">₹{p.price}</span>
-                  <span className="text-sm text-slate-500"> / {p.period}</span>
+                  <span className="text-4xl font-extrabold font-outfit text-white">₹{p.price.toLocaleString()}</span>
+                  <span className="text-xs text-slate-500"> / {p.durationDays} days</span>
                 </div>
                 <ul className="space-y-2.5 mb-8 flex-1">
-                  {p.features.map((f) => (
+                  <li className="flex items-center gap-2 text-xs text-slate-350 font-semibold border-b border-slate-850 pb-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                    {p.limitLeads === 999999 ? 'Unlimited Leads' : `${p.limitLeads.toLocaleString()} Leads`}
+                  </li>
+                  {p.features && p.features.map((f) => (
                     <li key={f} className="flex items-center gap-2 text-xs text-slate-300">
                       <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />{f}
                     </li>
@@ -225,9 +294,9 @@ const Home = () => {
                 </ul>
                 <button
                   onClick={() => navigate('/register')}
-                  className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${p.popular ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}
+                  className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${p.isPopular ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}
                 >
-                  {p.btn}
+                  Start {p.name}
                 </button>
               </div>
             ))}
@@ -291,7 +360,6 @@ const Home = () => {
           </div>
           <div className="border-t border-slate-800/60 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
             <span>© {new Date().getFullYear()} Codeitz. All rights reserved. Made with ❤️ in India.</span>
-
           </div>
         </div>
       </footer>

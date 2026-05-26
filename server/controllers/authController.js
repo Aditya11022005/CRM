@@ -2,6 +2,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const sendEmail = require('../utils/sendEmail');
 const crypto = require('crypto');
+const Announcement = require('../models/Announcement');
 
 // Helpers for token generation
 const generateAccessToken = (user) => {
@@ -63,12 +64,18 @@ exports.register = async (req, res, next) => {
     const otp = generateOTP();
     const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
+    // Force role to never be Super Admin via registration
+    let userRole = role || 'Business Owner';
+    if (userRole === 'Super Admin') {
+      userRole = 'Business Owner';
+    }
+
     // Create user
     user = await User.create({
       name,
       email,
       password,
-      role: role || 'Business Owner',
+      role: userRole,
       otp,
       otpExpires,
       isVerified: false,
@@ -476,3 +483,21 @@ exports.updateProfile = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * @desc    Get active platform announcements
+ * @route   GET /api/v1/auth/announcements
+ * @access  Private
+ */
+exports.getActiveAnnouncements = async (req, res, next) => {
+  try {
+    const announcements = await Announcement.find({ isActive: true }).sort({ createdAt: -1 });
+    res.status(200).json({
+      success: true,
+      announcements,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+

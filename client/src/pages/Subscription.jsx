@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { CreditCard, Check, ShieldCheck, Zap, AlertTriangle, HelpCircle } from 'lucide-react';
+import { CreditCard, Check, ShieldCheck, Zap, AlertTriangle, HelpCircle, Ticket, Percent, Sparkles, X } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -8,8 +8,13 @@ const Subscription = () => {
   const { activeBusinessId } = useSelector((state) => state.auth);
 
   const [subscription, setSubscription] = useState(null);
-  const [plans, setPlans] = useState({});
+  const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Promo Code coupon states
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState(null); // { code, discountPercent, description }
+  const [checkingPromo, setCheckingPromo] = useState(false);
 
   const fetchSubscription = async () => {
     try {
@@ -17,7 +22,8 @@ const Subscription = () => {
       const res = await api.get('/subscriptions');
       if (res.data.success) {
         setSubscription(res.data.subscription);
-        setPlans(res.data.plans);
+        // Save packages list
+        setPackages(res.data.packages || []);
       }
     } catch (err) {
       toast.error('Failed to load subscription status');
@@ -32,22 +38,52 @@ const Subscription = () => {
     }
   }, [activeBusinessId]);
 
+  const handleApplyPromo = async (e) => {
+    e.preventDefault();
+    if (!promoInput.trim()) return;
+
+    try {
+      setCheckingPromo(true);
+      const res = await api.post('/subscriptions/validate-promo', { code: promoInput.toUpperCase().trim() });
+      if (res.data.success) {
+        setAppliedPromo(res.data.offer);
+        toast.success(`Coupon Applied! ${res.data.offer.discountPercent}% Discount Activated`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Invalid or expired promo code');
+      setAppliedPromo(null);
+    } finally {
+      setCheckingPromo(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoInput('');
+    toast.success('Promo coupon removed');
+  };
+
   const handleUpgradePlan = async (planName) => {
     const loadingToast = toast.loading('Opening payment order...');
     try {
-      const res = await api.post('/subscriptions/order', { planName });
+      const payload = { planName };
+      if (appliedPromo) {
+        payload.promoCode = appliedPromo.code;
+      }
+
+      const res = await api.post('/subscriptions/order', payload);
       if (res.data.success) {
         const { orderId, amount, currency, keyId } = res.data;
         
         toast.dismiss(loadingToast);
 
-        // Configure checkout
+        // Configure Razorpay checkout
         const options = {
           key: keyId,
           amount,
           currency,
           name: 'Codeitz SaaS Upgrade',
-          description: `Subscribe to plan: ${planName}`,
+          description: `Subscribe to plan: ${planName} ${appliedPromo ? `(Promo: ${appliedPromo.code})` : ''}`,
           order_id: orderId,
           handler: async (response) => {
             const verifyToast = toast.loading('Activating subscription tier...');
@@ -61,6 +97,8 @@ const Subscription = () => {
               if (verifyRes.data.success) {
                 toast.dismiss(verifyToast);
                 toast.success(verifyRes.data.message);
+                setAppliedPromo(null);
+                setPromoInput('');
                 fetchSubscription();
               }
             } catch (err) {
@@ -81,7 +119,7 @@ const Subscription = () => {
       }
     } catch (err) {
       toast.dismiss(loadingToast);
-      toast.error('Billing order creation failed.');
+      toast.error(err.response?.data?.error || 'Billing order creation failed.');
     }
   };
 
@@ -98,6 +136,9 @@ const Subscription = () => {
       </div>
     );
   }
+
+  // Filter out 'Free Trial' from purchase cards to keep list clean (Free Trial is only given at registration)
+  const purchasePackages = packages.filter(pkg => pkg.name !== 'Free Trial');
 
   return (
     <div className="space-y-6">
@@ -136,102 +177,122 @@ const Subscription = () => {
         </div>
       )}
 
+      {/* Coupon Application Box */}
+      <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800/80 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl">
+            <Ticket className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-white uppercase tracking-wide">Have a Promotional Promo Code?</h4>
+            <p className="text-[10px] text-slate-500 mt-0.5">Enter a valid coupon below to unlock exclusive subscription discounts.</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleApplyPromo} className="flex gap-2 w-full md:w-auto max-w-sm shrink-0">
+          <input
+            type="text"
+            disabled={appliedPromo !== null}
+            value={promoInput}
+            onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+            placeholder={appliedPromo ? appliedPromo.code : "e.g. WELCOME20"}
+            className={`px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-xs text-white placeholder-slate-650 focus:outline-none focus:border-indigo-500 w-full md:w-48 font-mono tracking-wider ${
+              appliedPromo ? 'text-emerald-450 border-emerald-500/30' : ''
+            }`}
+          />
+          {appliedPromo ? (
+            <button
+              type="button"
+              onClick={handleRemovePromo}
+              className="px-4 py-2 bg-rose-600/10 hover:bg-rose-600/25 border border-rose-600/20 text-rose-455 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all"
+            >
+              <X className="w-3.5 h-3.5" /> Remove
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={checkingPromo}
+              className="px-4 py-2 bg-indigo-650 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all whitespace-nowrap"
+            >
+              {checkingPromo ? 'Checking...' : 'Apply Coupon'}
+            </button>
+          )}
+        </form>
+      </div>
+
       {/* Upgrade options grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* Monthly Plan */}
-        <div className="p-6 rounded-2xl bg-slate-900/50 border border-slate-800/80 flex flex-col shadow-sm relative">
-          <h3 className="text-sm font-bold text-white mb-2 font-outfit">Monthly Tier</h3>
-          <p className="text-[11px] text-slate-500 mb-6">Best for growing teams and active freelancers.</p>
-          
-          <div className="mb-6">
-            <span className="text-3xl font-bold text-white font-outfit">₹299</span>
-            <span className="text-xs text-slate-500"> / month</span>
+        {purchasePackages.length === 0 ? (
+          <div className="col-span-3 py-16 text-center text-xs text-slate-500 bg-slate-900/20 border border-slate-850 rounded-2xl">
+            No premium pricing packages loaded. Contact support.
           </div>
+        ) : (
+          purchasePackages.map((pkg) => {
+            const originalPrice = pkg.price;
+            let discountedPrice = originalPrice;
+            if (appliedPromo) {
+              discountedPrice = Math.max(0, Math.round(originalPrice - (originalPrice * appliedPromo.discountPercent) / 100));
+            }
+            
+            return (
+              <div key={pkg._id} className={`p-6 rounded-2xl border flex flex-col shadow-sm relative ${
+                pkg.isPopular 
+                  ? 'bg-gradient-to-b from-indigo-950/40 to-slate-900/60 border-indigo-500/80 shadow-lg' 
+                  : 'bg-slate-900/50 border-slate-800/80'
+              }`}>
+                {pkg.isPopular && (
+                  <span className="absolute top-[-10px] left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-indigo-600 text-white tracking-wide">
+                    Popular Value
+                  </span>
+                )}
+                
+                <h3 className="text-sm font-bold text-white mb-2 font-outfit uppercase tracking-wide">{pkg.name}</h3>
+                <p className="text-[11px] text-slate-500 mb-6">{pkg.description || 'Premium CRM Outbound access'}</p>
+                
+                <div className="mb-6">
+                  {appliedPromo ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-3xl font-extrabold text-emerald-450 font-outfit">₹{discountedPrice.toLocaleString()}</span>
+                        <span className="text-xs text-slate-550 line-through">₹{originalPrice.toLocaleString()}</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-450 font-bold block">
+                        Applied {appliedPromo.discountPercent}% Coupon Discount!
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="text-3xl font-extrabold text-white font-outfit">₹{originalPrice.toLocaleString()}</span>
+                      <span className="text-xs text-slate-500"> / {pkg.durationDays} days</span>
+                    </div>
+                  )}
+                </div>
 
-          <ul className="space-y-3 mb-8 flex-1">
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> 1,000 Scraped Leads / month
-            </li>
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> Real-time Scraper logs console
-            </li>
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> Invoices & Quote tools
-            </li>
-          </ul>
+                <ul className="space-y-3 mb-8 flex-1">
+                  <li className="flex items-center gap-2 text-xs text-slate-300">
+                    <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> {pkg.limitLeads === 999999 ? 'Unlimited' : `${pkg.limitLeads.toLocaleString()} Leads`} scraped total
+                  </li>
+                  {pkg.features && pkg.features.map((feat, idx) => (
+                    <li key={idx} className="flex items-center gap-2 text-xs text-slate-300">
+                      <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> {feat}
+                    </li>
+                  ))}
+                </ul>
 
-          <button
-            onClick={() => handleUpgradePlan('Monthly')}
-            className="w-full py-2.5 bg-slate-850 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-semibold uppercase tracking-wider font-outfit transition-all"
-          >
-            Upgrade Monthly
-          </button>
-        </div>
-
-        {/* 6 Months Plan */}
-        <div className="p-6 rounded-2xl bg-gradient-to-b from-indigo-950/40 to-slate-900/60 border border-indigo-500/80 flex flex-col shadow-lg relative">
-          <span className="absolute top-[-10px] left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-indigo-600 text-white tracking-wide">
-            Popular Value
-          </span>
-          <h3 className="text-sm font-bold text-white mb-2 font-outfit">Semi-Annual Deal</h3>
-          <p className="text-[11px] text-slate-500 mb-6">Perfect for agencies running medium outbound workflows.</p>
-          
-          <div className="mb-6">
-            <span className="text-3xl font-bold text-white font-outfit">₹3,000</span>
-            <span className="text-xs text-slate-500"> / 6 Months</span>
-          </div>
-
-          <ul className="space-y-3 mb-8 flex-1">
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> 8,000 Scraped Leads / month
-            </li>
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> Custom theme workspace colors
-            </li>
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> Multi-Workspace switching
-            </li>
-          </ul>
-
-          <button
-            onClick={() => handleUpgradePlan('6 Month')}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold uppercase tracking-wider font-outfit transition-all shadow-md"
-          >
-            Activate 6 Months
-          </button>
-        </div>
-
-        {/* Yearly Plan */}
-        <div className="p-6 rounded-2xl bg-slate-900/50 border border-slate-800/80 flex flex-col shadow-sm relative">
-          <h3 className="text-sm font-bold text-white mb-2 font-outfit">Yearly Enterprise</h3>
-          <p className="text-[11px] text-slate-500 mb-6">Ultimate package for unlimited maps crawling actions.</p>
-          
-          <div className="mb-6">
-            <span className="text-3xl font-bold text-white font-outfit">₹5,000</span>
-            <span className="text-xs text-slate-500"> / Year</span>
-          </div>
-
-          <ul className="space-y-3 mb-8 flex-1">
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> Unlimited Leads generation
-            </li>
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> Priority Puppeteer sandbox slots
-            </li>
-            <li className="flex items-center gap-2 text-xs text-slate-300">
-              <Check className="w-3.5 h-3.5 text-indigo-400" /> Full White-label logo assets support
-            </li>
-          </ul>
-
-          <button
-            onClick={() => handleUpgradePlan('Yearly')}
-            className="w-full py-2.5 bg-slate-850 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-semibold uppercase tracking-wider font-outfit transition-all"
-          >
-            Upgrade Yearly
-          </button>
-        </div>
-
+                <button
+                  onClick={() => handleUpgradePlan(pkg.name)}
+                  className={`w-full py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider font-outfit transition-all ${
+                    pkg.isPopular 
+                      ? 'bg-indigo-650 hover:bg-indigo-600 text-white shadow-md' 
+                      : 'bg-slate-850 hover:bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  Activate {pkg.name}
+                </button>
+              </div>
+            );
+          })
+        )}
       </div>
 
     </div>

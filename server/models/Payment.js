@@ -40,6 +40,10 @@ const PaymentSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  promoApplied: {
+    type: String,
+    default: '',
+  },
   date: {
     type: Date,
     default: Date.now,

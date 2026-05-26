@@ -70,9 +70,9 @@ const STEPS = [
     icon: Rocket,
     iconColor: 'text-indigo-400',
     iconBg: 'bg-indigo-500/15',
-    title: 'LeadOrbit CRM मध्ये स्वागत आहे! 🎉',
-    subtitle: 'तुमचा Lead Generation + CRM platform ready आहे.',
-    desc: 'हे 5 step guide तुम्हाला पहिल्या 5 मिनिटांत सगळं setup करायला मदत करेल. सुरू करूया?',
+    title: 'Welcome to Codeitz CRM! 🎉',
+    subtitle: 'Your Lead Generation & CRM platform is ready.',
+    desc: 'This 5-step quick start guide will help you configure your workspaces, scrape local leads, and manage contacts within minutes. Shall we start?',
     action: null,
     actionLabel: null,
   },
@@ -81,11 +81,11 @@ const STEPS = [
     icon: Building,
     iconColor: 'text-violet-400',
     iconBg: 'bg-violet-500/15',
-    title: 'Step 1: Business Workspace बनवा',
-    subtitle: 'तुमचा business profile setup करा.',
-    desc: 'Settings मध्ये जाऊन तुमचे Business Name, Logo आणि GSTIN add करा. प्रत्येक workspace स्वतंत्र असतो.',
+    title: 'Step 1: Create Business Workspace',
+    subtitle: 'Configure your business workspace profile.',
+    desc: 'Navigate to Settings to add your Business Name, logo assets, and custom billing parameters. Each workspace operates independently.',
     action: '/settings',
-    actionLabel: 'Settings उघडा →',
+    actionLabel: 'Open Settings →',
     checkKey: 'onboarding_business_done',
   },
   {
@@ -93,11 +93,11 @@ const STEPS = [
     icon: Search,
     iconColor: 'text-blue-400',
     iconBg: 'bg-blue-500/15',
-    title: 'Step 2: पहिले Leads आणा',
-    subtitle: 'Google Maps वरून leads scrape करा.',
-    desc: '"Leads Collection" मध्ये जा → Search box मध्ये category आणि city टाका (उदा. "Solar companies Pune") → Search करा! 🔍',
+    title: 'Step 2: Collect First Leads',
+    subtitle: 'Extract business leads from Google Maps.',
+    desc: 'Navigate to "Leads Collection", input a business category and city (e.g., "Solar Companies Pune"), and click search to crawl leads in real-time. 🔍',
     action: '/leads',
-    actionLabel: 'Leads Scraper उघडा →',
+    actionLabel: 'Open Leads Scraper →',
     checkKey: 'onboarding_leads_done',
   },
   {
@@ -105,11 +105,11 @@ const STEPS = [
     icon: GitPullRequestArrow,
     iconColor: 'text-emerald-400',
     iconBg: 'bg-emerald-500/15',
-    title: 'Step 3: CRM Pipeline वापरा',
-    subtitle: 'Leads Kanban board वर manage करा.',
-    desc: '"CRM Pipeline" मध्ये leads drag करा — New → Contacted → Interested → Converted. प्रत्येक lead वर notes आणि follow-ups add करा!',
+    title: 'Step 3: Manage CRM Pipeline',
+    subtitle: 'Track leads using the Kanban board.',
+    desc: 'Drag and drop your extracted contacts across various stages: New → Contacted → Interested → Converted. Log activities, updates, and custom reminders.',
     action: '/crm',
-    actionLabel: 'CRM Pipeline उघडा →',
+    actionLabel: 'Open CRM Pipeline →',
     checkKey: 'onboarding_crm_done',
   },
   {
@@ -117,11 +117,11 @@ const STEPS = [
     icon: Bell,
     iconColor: 'text-green-400',
     iconBg: 'bg-green-500/15',
-    title: 'Step 4: WhatsApp वर Contact करा',
-    subtitle: 'Bulk WhatsApp messages पाठवा.',
-    desc: '"WhatsApp Sender" मध्ये leads select करा, template choose करा, आणि एकाच click मध्ये सर्वांना message पाठवा! 📱',
+    title: 'Step 4: Contact via WhatsApp',
+    subtitle: 'Send personalized WhatsApp messages.',
+    desc: 'Go to "WhatsApp Sender", select your scraped leads, choose a messaging template, and click to dispatch messages directly. 📱',
     action: '/whatsapp',
-    actionLabel: 'WhatsApp Sender उघडा →',
+    actionLabel: 'Open WhatsApp Sender →',
     checkKey: 'onboarding_whatsapp_done',
   },
   {
@@ -129,11 +129,11 @@ const STEPS = [
     icon: PartyPopper,
     iconColor: 'text-yellow-400',
     iconBg: 'bg-yellow-500/15',
-    title: 'तुम्ही Ready आहात! 🚀',
-    subtitle: 'Setup पूर्ण झाले!',
-    desc: 'Dashboard वर जा आणि तुमचे leads, conversions, आणि revenue track करा. शुभेच्छा! 🙏',
+    title: 'You\'re Ready to Roll! 🚀',
+    subtitle: 'Setup completed successfully.',
+    desc: 'Go to your main Dashboard to monitor lead performance, pipelines, conversions, and dynamic monthly revenue stats. Good luck! 🙏',
     action: '/dashboard',
-    actionLabel: 'Dashboard उघडा →',
+    actionLabel: 'Open Dashboard →',
   },
 ];
 
@@ -318,11 +318,11 @@ const OnboardingGuide = ({ onClose }) => {
                 }`}
               >
                 {isLast ? (
-                  <><Sparkles className="w-4 h-4" /> Dashboard ला जा!</>
+                  <><Sparkles className="w-4 h-4" /> Go to Dashboard</>
                 ) : isFirst ? (
-                  <>सुरू करूया <ChevronRight className="w-4 h-4" /></>
+                  <>Let's Start <ChevronRight className="w-4 h-4" /></>
                 ) : (
-                  <>पुढे <ChevronRight className="w-4 h-4" /></>
+                  <>Next <ChevronRight className="w-4 h-4" /></>
                 )}
               </button>
             </div>
@@ -334,7 +334,7 @@ const OnboardingGuide = ({ onClose }) => {
                   onClick={handleClose}
                   className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
                 >
-                  Skip — मला माहित आहे कसे वापरायचे
+                  Skip Onboarding — I know the basics
                 </button>
               </div>
             )}
